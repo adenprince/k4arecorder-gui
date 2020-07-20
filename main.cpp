@@ -6,6 +6,7 @@
 
 #include "GLFW/glfw3.h"
 #include "imgui_dx11.h"
+#include "imgui_internal.h"
 
 using namespace std;
 
@@ -18,27 +19,80 @@ bool fileExists(string filename) {
     return isOpen;
 }
 
+// Enables or disables an integer input based on a passed boolean value
+void conditionalInputInt(const char* label, int* value, bool enabled) {
+    if(enabled == false) {
+        ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+    }
+    ImGui::InputInt(label, value);
+    if(enabled == false) {
+        ImGui::PopItemFlag();
+        ImGui::PopStyleVar();
+    }
+}
+
 // Create ImGui widgets and get program arguments from them
 int getArgs(string& argsStr, string& errorText) {
     int startProgram = 0;
 
+    if(ImGui::Button("Print help")) {
+        argsStr += " --help";
+        return 1;
+    }
+    ImGui::SameLine();
+    if(ImGui::Button("List devices")) {
+        argsStr += " --list";
+        return 1;
+    }
+    
+    static bool imu_recording_mode = false;
+    static bool record_for_time = false;
+    static int recording_time = 0;
+    static int depth_delay = 0;
+
+    if(ImGui::CollapsingHeader("Recording options")) {
+        ImGui::Checkbox("Record IMU data", &imu_recording_mode);
+        ImGui::Checkbox("Record for set time", &record_for_time);
+        conditionalInputInt("Seconds to record", &recording_time, record_for_time);
+        ImGui::InputInt("Depth delay", &depth_delay);
+        ImGui::Separator();
+    }
+
     const char* color_modes[] = {"OFF", "720p_YUY2", "720p_NV12", "720p", "1080p", "1440p", "1536p", "2160p", "3072p"};
     static int color_mode_index = 3;
-    ImGui::Combo("Color mode", &color_mode_index, color_modes, IM_ARRAYSIZE(color_modes));
-
+    const char* depth_modes[] = {"OFF", "PASSIVE_IR", "WFOV_UNBINNED", "WFOV_2X2BINNED", "NFOV_UNBINNED", "NFOV_2X2BINNED"};
+    static int depth_mode_index = 4;
     const char* frame_rates[] = {"5", "15", "30"};
     static int frame_rate_index = 2;
-    ImGui::Combo("Frame rate", &frame_rate_index, frame_rates, IM_ARRAYSIZE(frame_rates));
+    static bool manual_exposure = false;
+    static bool manual_gain = false;
+    static int exposure_value = 0;
+    static int gain_value = 0;
 
-    static bool imu_recording_mode = false;
-    ImGui::Checkbox("Record IMU data", &imu_recording_mode);
+    if(ImGui::CollapsingHeader("Camera options")) {
+        ImGui::Combo("Color mode", &color_mode_index, color_modes, IM_ARRAYSIZE(color_modes));
+        ImGui::Combo("Depth mode", &depth_mode_index, depth_modes, IM_ARRAYSIZE(depth_modes));
+        ImGui::Combo("Frame rate", &frame_rate_index, frame_rates, IM_ARRAYSIZE(frame_rates));
+        ImGui::Checkbox("Manual exposure", &manual_exposure);
+        ImGui::Checkbox("Manual gain", &manual_gain);
+        conditionalInputInt("Exposure value", &exposure_value, manual_exposure);
+        conditionalInputInt("Gain value", &gain_value, manual_gain);
+        ImGui::Separator();
+    }
 
-    static bool record_for_time = false;
-    ImGui::Checkbox("Record for set time", &record_for_time);
+    const char* external_sync_modes[] = {"Standalone", "Subordinate", "Master"};
+    static int external_sync_mode_index = 0;
+    static int external_sync_delay = 0;
+    static int device_index = 0;
 
-    static int recording_time = 0;
-    ImGui::InputInt("Seconds to record", &recording_time);
-
+    if(ImGui::CollapsingHeader("Multiple device options")) {
+        ImGui::Combo("External sync mode", &external_sync_mode_index, external_sync_modes, IM_ARRAYSIZE(external_sync_modes));
+        conditionalInputInt("External sync delay", &external_sync_delay, (external_sync_mode_index == 1));
+        ImGui::InputInt("Device index", &device_index);
+        ImGui::Separator();
+    }
+    
     static char output_filename[128] = "";
     ImGui::InputText("Output filename", output_filename, IM_ARRAYSIZE(output_filename));
 
@@ -53,16 +107,6 @@ int getArgs(string& argsStr, string& errorText) {
         // Reset error text
         errorText = "";
 
-        if(record_for_time) {
-            argsStr += " --record-length " + to_string(recording_time);
-        }
-
-        string colorMode = color_modes[color_mode_index];
-        argsStr += " --color-mode " + colorMode;
-
-        const int frame_rates_int[] = {5, 15, 30};
-        argsStr += " --rate " + to_string(frame_rates_int[frame_rate_index]);
-
         argsStr += " --imu";
         if(imu_recording_mode) {
             argsStr += " ON";
@@ -70,6 +114,32 @@ int getArgs(string& argsStr, string& errorText) {
         else {
             argsStr += " OFF";
         }
+
+        if(record_for_time) {
+            argsStr += " --record-length " + to_string(recording_time);
+        }
+
+        argsStr += " --depth-delay " + to_string(depth_delay);
+
+        argsStr += " --color-mode " + string(color_modes[color_mode_index]);
+
+        argsStr += " --depth-mode " + string(depth_modes[depth_mode_index]);
+
+        argsStr += " --rate " + string(frame_rates[frame_rate_index]);
+
+        if(manual_exposure) {
+            argsStr += " --exposure-control " + to_string(exposure_value);
+        }
+
+        if(manual_gain) {
+            argsStr += " --gain " + to_string(gain_value);
+        }
+        
+        argsStr += " --external-sync " + string(external_sync_modes[external_sync_mode_index]);
+
+        argsStr += " --sync-delay " + to_string(external_sync_delay);
+
+        argsStr += " --device " + to_string(device_index);
 
         argsStr += " " + string(output_filename);
 
@@ -80,6 +150,26 @@ int getArgs(string& argsStr, string& errorText) {
         // Check for errors
         if(recording_time < 0) {
             errorText += "ERROR: Recording length cannot be negative\n";
+            startProgram = 0;
+        }
+
+        if(exposure_value < -11 || exposure_value > 200000) {
+            errorText += "ERROR: Exposure value must be between -11 and 200,000\n";
+            startProgram = 0;
+        }
+
+        if(gain_value < 0 || gain_value > 255) {
+            errorText += "ERROR: Gain value must be between 0 and 255\n";
+            startProgram = 0;
+        }
+
+        if(device_index < 0 || device_index > 255) {
+            errorText += "ERROR: Device index must be between 0 and 255\n";
+            startProgram = 0;
+        }
+
+        if(external_sync_delay < 0) {
+            errorText += "ERROR: External sync delay cannot be negative\n";
             startProgram = 0;
         }
 
@@ -129,7 +219,7 @@ int main(int argc, char* argv[]) {
     // Create application window
     WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("K4ARecorder Options"), NULL };
     ::RegisterClassEx(&wc);
-    HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("K4ARecorder Options"), WS_OVERLAPPEDWINDOW, 100, 100, 640, 480, NULL, NULL, wc.hInstance, NULL);
+    HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("K4ARecorder Options"), WS_OVERLAPPEDWINDOW, 100, 100, 720, 560, NULL, NULL, wc.hInstance, NULL);
 
     // Initialize Direct3D
     if(!CreateDeviceD3D(hwnd)) {
@@ -207,13 +297,13 @@ int main(int argc, char* argv[]) {
     CleanupDeviceD3D();
     ::DestroyWindow(hwnd);
     ::UnregisterClass(wc.lpszClassName, wc.hInstance);
-    
-    // Empty message queue
-    while(::PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE) != 0) {}
 
-    if(startProgram == 2) {
+    if(msg.message == WM_QUIT || startProgram == -1) {
         return 0;
     }
+
+    // Empty message queue
+    while(::PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE) != 0) {}
 
     cout << "Arguments: " << argsStr << endl;
 
@@ -253,42 +343,4 @@ int main(int argc, char* argv[]) {
     CloseHandle(pi.hThread);
 
     return 0;
-}
-
-// Helper functions
-
-bool CreateDeviceD3D(HWND hWnd) {
-    // Setup swap chain
-    DXGI_SWAP_CHAIN_DESC sd;
-    ZeroMemory(&sd, sizeof(sd));
-    sd.BufferCount = 2;
-    sd.BufferDesc.Width = 0;
-    sd.BufferDesc.Height = 0;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferDesc.RefreshRate.Numerator = 60;
-    sd.BufferDesc.RefreshRate.Denominator = 1;
-    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.OutputWindow = hWnd;
-    sd.SampleDesc.Count = 1;
-    sd.SampleDesc.Quality = 0;
-    sd.Windowed = TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-    UINT createDeviceFlags = 0;
-    //createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
-    D3D_FEATURE_LEVEL featureLevel;
-    const D3D_FEATURE_LEVEL featureLevelArray[2] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_0, };
-    if(D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, createDeviceFlags, featureLevelArray, 2, D3D11_SDK_VERSION, &sd, &g_pSwapChain, &g_pd3dDevice, &featureLevel, &g_pd3dDeviceContext) != S_OK)
-        return false;
-
-    CreateRenderTarget();
-    return true;
-}
-
-void CreateRenderTarget() {
-    ID3D11Texture2D* pBackBuffer;
-    g_pSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
-    g_pd3dDevice->CreateRenderTargetView(pBackBuffer, NULL, &g_mainRenderTargetView);
-    pBackBuffer->Release();
 }
