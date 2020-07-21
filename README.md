@@ -25,4 +25,5 @@ Available options include:
    - External sync mode
    - External sync delay
    - Device index
+ - Recorder file path
  - Output filename

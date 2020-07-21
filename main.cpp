@@ -33,7 +33,7 @@ void conditionalInputInt(const char* label, int* value, bool enabled) {
 }
 
 // Create ImGui widgets and get program arguments from them
-int getArgs(string& argsStr, string& errorText) {
+int getArgs(string& argsStr, string& errorText, string& recorderPathStr) {
     int startProgram = 0;
 
     if(ImGui::Button("Print help")) {
@@ -93,6 +93,10 @@ int getArgs(string& argsStr, string& errorText) {
         ImGui::Separator();
     }
     
+    static char recorder_path[128] = "C:/Program Files/Azure Kinect SDK v1.4.0/tools/k4arecorder.exe";
+    ImGui::InputText("Recorder file path", recorder_path, IM_ARRAYSIZE(recorder_path));
+    recorderPathStr = recorder_path;
+
     static char output_filename[128] = "";
     ImGui::InputText("Output filename", output_filename, IM_ARRAYSIZE(output_filename));
 
@@ -107,6 +111,8 @@ int getArgs(string& argsStr, string& errorText) {
         // Reset error text
         errorText = "";
 
+        string output_filename_str = output_filename;
+
         argsStr += " --imu";
         if(imu_recording_mode) {
             argsStr += " ON";
@@ -120,11 +126,8 @@ int getArgs(string& argsStr, string& errorText) {
         }
 
         argsStr += " --depth-delay " + to_string(depth_delay);
-
         argsStr += " --color-mode " + string(color_modes[color_mode_index]);
-
         argsStr += " --depth-mode " + string(depth_modes[depth_mode_index]);
-
         argsStr += " --rate " + string(frame_rates[frame_rate_index]);
 
         if(manual_exposure) {
@@ -136,16 +139,11 @@ int getArgs(string& argsStr, string& errorText) {
         }
         
         argsStr += " --external-sync " + string(external_sync_modes[external_sync_mode_index]);
-
         argsStr += " --sync-delay " + to_string(external_sync_delay);
-
         argsStr += " --device " + to_string(device_index);
-
-        argsStr += " " + string(output_filename);
+        argsStr += " " + output_filename_str;
 
         startProgram = 1;
-
-        string output_filename_str = output_filename;
 
         // Check for errors
         if(recording_time < 0) {
@@ -173,6 +171,11 @@ int getArgs(string& argsStr, string& errorText) {
             startProgram = 0;
         }
 
+        if(fileExists(recorderPathStr) == false) {
+            errorText += "ERROR: Recorder file path \"" +recorderPathStr + "\" not found\n";
+            startProgram = 0;
+        }
+
         if(output_filename_str == "") {
             errorText += "ERROR: Output filename is empty\n";
             startProgram = 0;
@@ -184,23 +187,20 @@ int getArgs(string& argsStr, string& errorText) {
         }
     }
 
-    ImGui::PopStyleColor(3);
-
     ImGui::SameLine();
 
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(ImColor::HSV(0.0f, 0.6f, 0.6f)));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-        ImVec4(ImColor::HSV(0.0f, 0.7f, 0.7f)));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-        ImVec4(ImColor::HSV(0.0f, 0.8f, 0.8f)));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(ImColor::HSV(0.0f, 0.7f, 0.7f)));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(ImColor::HSV(0.0f, 0.8f, 0.8f)));
 
     if(ImGui::Button("Quit")) {
         startProgram = -1;
     }
 
-    ImGui::PopStyleColor(3);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.0f, 1.0f));
+    ImGui::TextWrapped(errorText.c_str());
 
-    ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.0f, 1.0f), errorText.c_str());
+    ImGui::PopStyleColor(7);
 
     return startProgram;
 }
@@ -210,6 +210,7 @@ int main(int argc, char* argv[]) {
     int startProgram = 0;
     string argsStr;
     string errorText;
+    string recorderPathStr;
 
     // Correct font scaling
     if(!glfwInit()) {
@@ -219,7 +220,7 @@ int main(int argc, char* argv[]) {
     // Create application window
     WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("K4ARecorder Options"), NULL };
     ::RegisterClassEx(&wc);
-    HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("K4ARecorder Options"), WS_OVERLAPPEDWINDOW, 100, 100, 720, 560, NULL, NULL, wc.hInstance, NULL);
+    HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("K4ARecorder Options"), WS_OVERLAPPEDWINDOW, 100, 100, 720, 590, NULL, NULL, wc.hInstance, NULL);
 
     // Initialize Direct3D
     if(!CreateDeviceD3D(hwnd)) {
@@ -276,7 +277,7 @@ int main(int argc, char* argv[]) {
         ImGui::SetNextWindowSize(io.DisplaySize);
         
         ImGui::Begin("Options", (bool*) 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
-        startProgram = getArgs(argsStr, errorText);
+        startProgram = getArgs(argsStr, errorText, recorderPathStr);
         ImGui::End();
 
         // Rendering
@@ -314,13 +315,18 @@ int main(int argc, char* argv[]) {
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
 
-    // Copy arguments to LPWSTR variable so they can be passed to CreateProcess
+    // Copy arguments to LPWSTR variable to be passed to CreateProcess
     wstring argsWStr(argsStr.length(), L' ');
     copy(argsStr.begin(), argsStr.end(), argsWStr.begin());
     LPWSTR args = const_cast<LPWSTR>(argsWStr.c_str());
 
+    // Copy recorder file path to LPCWSTR variable to be passed to CreateProcess
+    wstring recorderPathWStr(recorderPathStr.length(), L' ');
+    copy(recorderPathStr.begin(), recorderPathStr.end(), recorderPathWStr.begin());
+    LPCWSTR recorderPathArg = const_cast<LPCWSTR>(recorderPathWStr.c_str());
+
     // Start the recorder process
-    if(!CreateProcess(L"c:\\Program Files\\Azure Kinect SDK v1.4.0\\tools\\k4arecorder.exe",   // Program file
+    if(!CreateProcess(recorderPathArg,   // Program file
         args,           // Command line
         NULL,           // Process handle not inheritable
         NULL,           // Thread handle not inheritable
