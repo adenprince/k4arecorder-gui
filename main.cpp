@@ -33,6 +33,9 @@ int main(int argc, char* argv[]) {
 
     // Correct font scaling
     if(!glfwInit()) {
+        string errorText = "GLFW failed to initialize.";
+        cout << errorText << endl;
+        MessageBoxA(0, errorText.c_str(), NULL, MB_OK | MB_ICONHAND);
         return 1;
     }
 
@@ -43,6 +46,9 @@ int main(int argc, char* argv[]) {
 
     // Initialize Direct3D
     if(!CreateDeviceD3D(hwnd)) {
+        string errorText = "Direct3D failed to initialize.";
+        cout << errorText << endl;
+        MessageBoxA(0, errorText.c_str(), NULL, MB_OK | MB_ICONHAND);
         CleanupDeviceD3D();
         ::UnregisterClass(wc.lpszClassName, wc.hInstance);
         return 1;
