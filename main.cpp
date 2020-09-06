@@ -30,6 +30,30 @@ int main(int argc, char* argv[]) {
     string argsStr;
     string errorText;
     string recorderPathStr;
+    
+    // Detect Azure Kinect SDK folder in Program Files
+    WIN32_FIND_DATAA SDKFolderData;
+    HANDLE SDKFolderHandle;
+    bool SDKFolderFound = false;
+
+    SDKFolderHandle = FindFirstFileA("C:\\Program Files\\Azure Kinect SDK*", &SDKFolderData);
+
+    if(SDKFolderHandle != INVALID_HANDLE_VALUE) {
+        SDKFolderFound = true;
+        FindClose(SDKFolderHandle);
+    }
+
+    // Set recorder path string to folder name
+    if(SDKFolderFound) {
+        recorderPathStr = SDKFolderData.cFileName;
+    }
+    else {
+        // Set to latest version (at time of writing) if SDK folder not found
+        recorderPathStr = "Azure Kinect SDK v1.4.1";
+    }
+
+    // Set full path for K4ARecorder executable
+    recorderPathStr = "C:\\Program Files\\" + recorderPathStr + "\\tools\\k4arecorder.exe";
 
     // Correct font scaling
     if(!glfwInit()) {
@@ -42,7 +66,7 @@ int main(int argc, char* argv[]) {
     // Create application window
     WNDCLASSEX wc = {sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("K4ARecorder Options"), NULL};
     ::RegisterClassEx(&wc);
-    HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("K4ARecorder Options"), WS_OVERLAPPEDWINDOW, 100, 100, 720, 590, NULL, NULL, wc.hInstance, NULL);
+    HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("K4ARecorder Options"), WS_OVERLAPPEDWINDOW, 100, 100, 800, 590, NULL, NULL, wc.hInstance, NULL);
 
     // Initialize Direct3D
     if(!CreateDeviceD3D(hwnd)) {

@@ -102,11 +102,18 @@ int getArgs(string& argsStr, string& errorText, string& recorderPathStr) {
     }
 
     static char recorder_path[128] = "C:/Program Files/Azure Kinect SDK v1.4.0/tools/k4arecorder.exe";
+
+    // Check if the detected recorder path and the text input do not match
+    if(strcmp(recorder_path, recorderPathStr.c_str()) != 0) {
+        // Copy the detected recorder path to the GUI once
+        strcpy_s(recorder_path, recorderPathStr.c_str());
+    }
+
     ImGui::InputText("Recorder file path", recorder_path, IM_ARRAYSIZE(recorder_path));
-    recorderPathStr = recorder_path;
+    recorderPathStr = recorder_path; // Update recorder path string in main
 
     static char output_filename[128] = "";
-    ImGui::InputText("Output filename", output_filename, IM_ARRAYSIZE(output_filename));
+    ImGui::InputText("Output filename (.mkv)", output_filename, IM_ARRAYSIZE(output_filename));
 
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(ImColor::HSV(0.4f, 0.6f, 0.6f)));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(ImColor::HSV(0.4f, 0.7f, 0.7f)));
